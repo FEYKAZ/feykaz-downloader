@@ -1,0 +1,202 @@
+// === KONFIGURASI API ===
+const API_URL = 'https://tikwm.com/api/';
+
+// Elemen DOM
+const urlInput = document.getElementById('urlInput');
+const fetchBtn = document.getElementById('fetchBtn');
+const resultCard = document.getElementById('resultArea');
+const previewVideo = document.getElementById('previewVideo');
+const downloadLink = document.getElementById('downloadLink');
+const videoMetaSpan = document.getElementById('videoMeta');
+const errorDiv = document.getElementById('errorMessage');
+
+// Helper: reset tampilan
+function resetUI() {
+  resultCard.classList.remove('show');
+  errorDiv.style.display = 'none';
+  errorDiv.innerHTML = '';
+  previewVideo.src = '';
+  previewVideo.poster = '';
+  downloadLink.onclick = null;
+  downloadLink.textContent = '📥 Unduh Video';
+  videoMetaSpan.textContent = '🎬 TikTok Video';
+}
+
+// menampilkan pesan error
+function showError(msg) {
+  errorDiv.innerHTML = `<span>⚠️ ${msg}</span>`;
+  errorDiv.style.display = 'block';
+  resultCard.classList.remove('show');
+}
+
+// Fungsi untuk mengikuti redirect (short link seperti vt.tiktok.com)
+async function followRedirect(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    return response.url; // URL akhir setelah redirect
+  } catch (error) {
+    console.warn('Gagal follow redirect:', error);
+    return url; // return original jika gagal
+  }
+}
+
+// fungsi utama fetch & download
+async function processTikTokDownload() {
+  let rawUrl = urlInput.value.trim();
+  if (!rawUrl) {
+    showError('❌ Masukkan link TikTok terlebih dahulu!');
+    return;
+  }
+
+  // Tampilkan loading
+  const originalBtnText = fetchBtn.innerHTML;
+  fetchBtn.innerHTML = '<span class="loader"></span> Memproses...';
+  fetchBtn.disabled = true;
+  resetUI();
+
+  try {
+    // Langkah 1: Cek apakah ini short link (vt.tiktok.com)
+    let finalUrl = rawUrl;
+    if (rawUrl.includes('vt.tiktok.com') || rawUrl.includes('tiktok.com/t/')) {
+      console.log('Mengikuti redirect untuk short link...');
+      finalUrl = await followRedirect(rawUrl);
+    }
+    
+    // Validasi final URL mengandung tiktok.com
+    if (!finalUrl.includes('tiktok.com')) {
+      throw new Error('Link tidak mengarah ke TikTok yang valid. Pastikan video masih tersedia.');
+    }
+
+    console.log('URL final:', finalUrl);
+    
+    // Langkah 2: Panggil API dengan URL final
+    const response = await fetch(`${API_URL}?url=${encodeURIComponent(finalUrl)}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gagal mengambil data (HTTP ${response.status})`);
+    }
+
+    const data = await response.json();
+    
+    // Cek respon dari API
+    if (data.code !== 0 || !data.data) {
+      let errMsg = data.msg || 'Video tidak ditemukan. Beberapa penyebab: video private, dihapus, atau tidak tersedia di region Anda.';
+      throw new Error(errMsg);
+    }
+
+    const videoData = data.data;
+    
+    // Cari URL video tanpa watermark
+    let videoUrl = '';
+    if (videoData.play) {
+      videoUrl = videoData.play;
+    } else if (videoData.wmplay) {
+      videoUrl = videoData.wmplay;
+    } else if (videoData.video) {
+      videoUrl = videoData.video;
+    } else {
+      throw new Error('URL video tidak ditemukan di response API.');
+    }
+
+    if (!videoUrl.startsWith('http')) {
+      throw new Error('Format video tidak dikenali.');
+    }
+
+    // Metadata
+    const author = videoData.author?.unique_id || videoData.author?.nickname || 'TikTok Creator';
+    const title = videoData.title || 'Video TikTok';
+    const duration = videoData.duration ? `${Math.floor(videoData.duration)} detik` : '';
+    
+    videoMetaSpan.innerHTML = `👤 ${author} • ${title.substring(0, 40)}${title.length > 40 ? '...' : ''} ${duration ? '• ' + duration : ''}`;
+
+    // Preview video
+    previewVideo.src = videoUrl;
+    previewVideo.load();
+
+    // Setup tombol download
+    downloadLink.onclick = async (e) => {
+      e.preventDefault();
+      if (!videoUrl) {
+        showError('Video belum siap, coba proses ulang.');
+        return;
+      }
+      
+      const originalText = downloadLink.textContent;
+      downloadLink.textContent = '⏳ Mengunduh...';
+      downloadLink.style.opacity = '0.8';
+      
+      try {
+        const videoResponse = await fetch(videoUrl);
+        if (!videoResponse.ok) throw new Error('Gagal mengambil video');
+        const blob = await videoResponse.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        
+        const timestamp = Date.now();
+        const safeAuthor = author.replace(/[^a-z0-9]/gi, '_').substring(0, 20);
+        const fileName = `TikTok_${safeAuthor}_${timestamp}.mp4`;
+        
+        const tempLink = document.createElement('a');
+        tempLink.href = blobUrl;
+        tempLink.download = fileName;
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        document.body.removeChild(tempLink);
+        
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 200);
+        
+        downloadLink.textContent = '✅ Tersimpan!';
+        setTimeout(() => {
+          if (downloadLink.textContent === '✅ Tersimpan!') {
+            downloadLink.textContent = originalText;
+            downloadLink.style.opacity = '1';
+          }
+        }, 2000);
+      } catch (err) {
+        console.error(err);
+        showError('Gagal mengunduh video. Coba lagi atau gunakan link lain.');
+        downloadLink.textContent = originalText;
+        downloadLink.style.opacity = '1';
+      }
+    };
+    
+    resultCard.classList.add('show');
+    resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    let userMsg = error.message || 'Terjadi kesalahan, coba beberapa saat lagi.';
+    if (userMsg.includes('Failed to fetch') || userMsg.includes('NetworkError')) {
+      userMsg = '📡 Gagal terhubung ke server. Periksa koneksi internet Anda.';
+    }
+    if (userMsg.includes('discontinued operating TikTok in Hong Kong')) {
+      userMsg = '🔒 Video ini tidak dapat diakses (TikTok tidak beroperasi di region video tersebut). Coba link TikTok lain.';
+    }
+    showError(userMsg);
+  } finally {
+    fetchBtn.innerHTML = originalBtnText;
+    fetchBtn.disabled = false;
+  }
+}
+
+// Event listener
+fetchBtn.addEventListener('click', processTikTokDownload);
+urlInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    processTikTokDownload();
+  }
+});
+
+console.log('VidTok Downloader Siap — Support short link vt.tiktok.com');
