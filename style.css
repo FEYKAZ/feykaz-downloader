@@ -485,3 +485,59 @@ width:100%;
 .promo-card:hover{
     transform:translateY(-5px);
 }
+/* PROMO CARD */
+.promo-card{
+    margin-top:20px;
+    width:100%;
+    background:rgba(255,255,255,0.05);
+    border-radius:20px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,0.1);
+}
+
+.promo-card img{
+    width:100%;
+    display:block;
+    height:auto;
+    object-fit:cover;
+}
+
+.promo-content{
+    padding:15px;
+}
+
+.promo-content h3{
+    font-size:24px;
+    margin-bottom:10px;
+}
+
+.promo-content p{
+    font-size:16px;
+    line-height:1.5;
+    margin-bottom:15px;
+}
+
+.promo-btn{
+    display:block;
+    width:100%;
+    text-align:center;
+    padding:14px;
+    border-radius:12px;
+    text-decoration:none;
+    color:white;
+    font-weight:bold;
+    background:linear-gradient(90deg,#27c6ff,#6d4aff);
+}
+
+/* RESPONSIVE HP */
+@media(max-width:768px){
+
+    .promo-content h3{
+        font-size:20px;
+    }
+
+    .promo-content p{
+        font-size:14px;
+    }
+
+}
